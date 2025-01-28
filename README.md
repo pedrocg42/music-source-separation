@@ -25,13 +25,15 @@ Follow these steps to set up the environment using [uv](https://docs.astral.sh/u
 ```bash
 
 # Create and activate a new uv environment
-curl -LsSf https://astral.sh/uv/install.sh | sh # (linux or mac)
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex" # Windows
+## (linux or mac)
+curl -LsSf https://astral.sh/uv/install.sh | sh 
+## Windows
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex" 
 
-uv venv --python 3.11
+uv venv --python 3.12
 source .venv/bin/activate # (linux or mac)
 .venv/Scripts/activate # Windows
 
-# Install the required packages
+# Install the required packages. Add [dev] for development
 uv pip install -e . --no-cache-dir
 ```
