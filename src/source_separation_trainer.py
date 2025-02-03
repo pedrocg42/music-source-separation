@@ -101,10 +101,10 @@ class SourceSeparationTrainer(pl.LightningModule):
             )
 
             # Log other metrics if needed
-            self.log("SDR", np.nanmedian(metrics["sdr"]), on_step=False, on_epoch=True, logger=True)
-            self.log("ISR", np.nanmedian(metrics["isr"]), on_step=False, on_epoch=True, logger=True)
-            self.log("SIR", np.nanmedian(metrics["sir"]), on_step=False, on_epoch=True, logger=True)
-            self.log("SAR", np.nanmedian(metrics["sar"]), on_step=False, on_epoch=True, logger=True)
+            self.log("SDR", np.nanmedian(metrics["sdr"]), on_step=False, on_epoch=True, logger=True, batch_size=1)
+            self.log("ISR", np.nanmedian(metrics["isr"]), on_step=False, on_epoch=True, logger=True, batch_size=1)
+            self.log("SIR", np.nanmedian(metrics["sir"]), on_step=False, on_epoch=True, logger=True, batch_size=1)
+            self.log("SAR", np.nanmedian(metrics["sar"]), on_step=False, on_epoch=True, logger=True, batch_size=1)
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
         return torch.optim.RAdam(self.parameters(), lr=1e-4, weight_decay=1e-5)

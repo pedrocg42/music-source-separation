@@ -1,9 +1,10 @@
 import random
+from collections import defaultdict
 
 import torch
 
 
-class SourceSeparationDataloader:
+class SourceSeparationStemDataloader:
     """
     A custom data loader with shuffle buffer functionality.
 
@@ -19,7 +20,12 @@ class SourceSeparationDataloader:
     """
 
     def __init__(
-        self, dataset: torch.utils.data.Dataset, buffer_size: int, batch_size: int, num_steps_per_epoch: int
+        self,
+        dataset: torch.utils.data.Dataset,
+        buffer_size: int,
+        batch_size: int,
+        num_steps_per_epoch: int,
+        target: str,
     ) -> None:
         """
         Initialize a shuffle buffer for the dataset.
@@ -33,15 +39,19 @@ class SourceSeparationDataloader:
         self.buffer_size = buffer_size
         self.batch_size = batch_size
         self.num_steps_per_epoch = num_steps_per_epoch
+        self.target = target
+
         self.current_step = 0
 
-        self.buffer = []
+        self.buffer = defaultdict(list)
         self.dataset_iter = iter(dataset)
 
         for i in range(buffer_size):
             if (i + 1) % (buffer_size // 10) == 0:
                 print(f"Buffer {int(((i + 1) / buffer_size) * 100)}% filled.")
-            self.buffer.append(next(self.dataset_iter))
+            sources = next(self.dataset_iter)
+            for source_segment, source in sources:
+                self.buffer[source].append(source_segment)
 
     def get_next(self) -> tuple[torch.Tensor, torch.Tensor, list[str]]:
         """
@@ -55,25 +65,36 @@ class SourceSeparationDataloader:
         batch_label = []
 
         for _ in range(self.batch_size):
-            if len(self.buffer) == 0:
+            if any(len(buffer) == 0 for buffer in self.buffer.values()):
                 break  # If buffer is empty, stop forming the batch
 
-            idx = random.randint(0, len(self.buffer) - 1)
-            batch_x.append(self.buffer[idx][0])
-            batch_y.append(self.buffer[idx][1])
-            batch_label.append(self.buffer[idx][2])
+            new_segments = next(self.dataset_iter)
+            new_segments = {source: segment for segment, source in new_segments}
 
-            try:
-                self.buffer[idx] = next(self.dataset_iter)
-            except StopIteration:
-                self.buffer.pop(idx)
+            mix = None
+            for source in self.buffer:
+                idx = random.randint(0, len(self.buffer) - 1)
+                if mix is None:
+                    mix = self.buffer[source][idx]
+                elif random.uniform(0, 1) > 0.1:
+                    mix += self.buffer[source][idx] * random.uniform(0.7, 1.4)
+
+                if source == self.target:
+                    target = self.buffer[source][idx]
+
+                if source in new_segments:
+                    self.buffer[source][idx] = new_segments[source]
+
+            batch_x.append(mix)
+            batch_y.append(target)
+            batch_label.append(self.target)
 
         return torch.stack(batch_x), torch.stack(batch_y), batch_label
 
     def __len__(self) -> int:
         return self.num_steps_per_epoch
 
-    def __iter__(self) -> "SourceSeparationDataloader":
+    def __iter__(self) -> "SourceSeparationStemDataloader":
         self.current_step = 0
         return self
 

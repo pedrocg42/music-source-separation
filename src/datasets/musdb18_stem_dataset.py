@@ -10,7 +10,7 @@ from src import MUSDB_PATH
 
 
 # Implementation from https://geoffroypeeters.github.io/deeplearning-101-audiomir_book/task_sourceseparation.html
-class MusDBDataset(IterableDataset):
+class MusDBStemDataset(IterableDataset):
     """
     A dataset for MusDB tracks with segment processing and multiprocessing
     loading.
@@ -44,8 +44,8 @@ class MusDBDataset(IterableDataset):
         num_workers (int): Number of threads for parallel processing.
         """
 
-        valid_targets = {"vocals", "drums", "bass", "other"}
-        assert all(target in valid_targets for target in targets)
+        self.valid_targets = {"vocals", "drums", "bass", "other"}
+        assert all(target in self.valid_targets for target in targets)
 
         self.split = split
         self.targets = targets
@@ -58,6 +58,10 @@ class MusDBDataset(IterableDataset):
             split=self.split,
             is_wav=True,
         )
+
+        # Test purposes
+        if split == "valid":
+            self.mus.tracks = self.mus.tracks[:1]
 
         if not self.mus.tracks:
             raise ValueError(f"The dataset for split '{self.split}' is empty or not loaded properly.")
@@ -76,15 +80,14 @@ class MusDBDataset(IterableDataset):
         step = int(track.rate * self.segment_overlap)
         name = track.name
         rate = track.rate
-        mix = torch.as_tensor(track.audio, dtype=torch.float32)
-        mix = rearrange(mix.unfold(dimension=0, size=size, step=step), "s c d -> s d c")
-        segments = []
-        for target in self.targets:
-            y = torch.as_tensor(track.targets[target].audio, dtype=torch.float32)
+        sources = [None] * len(self.valid_targets)
+        for i, source in enumerate(self.valid_targets):
+            y = torch.as_tensor(track.sources[source].audio, dtype=torch.float32)
             y = rearrange(y.unfold(dimension=0, size=size, step=step), "s c d -> s d c")
-            segments.extend(list(zip(mix, y, [target] * mix.shape[0], strict=True)))
-        del (mix, y, track)
-        return (segments, name, rate)
+            sources[i] = zip(y, [source] * len(y), strict=True)
+        sources = list(zip(*sources, strict=False))
+        del (y, track)
+        return (sources, name, rate)
 
     def _process_test_track(self, track: musdb.MultiTrack) -> list[tuple[torch.Tensor, torch.Tensor, str]]:
         """
@@ -123,8 +126,7 @@ class MusDBDataset(IterableDataset):
                     ]
                     futures = [executor.submit(self._process_track, track) for track in tracks]
                     for future in as_completed(futures):
-                        segments = future.result()[0]
-                        yield from segments
+                        yield from future.result()[0]
         elif self.split in ["valid", "test"]:
             # One-time processing for test data
             with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
