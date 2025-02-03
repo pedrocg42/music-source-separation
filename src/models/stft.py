@@ -218,7 +218,7 @@ class iSTFTModule(nn.Module):
         torch.Tensor: Output tensor after iSTFT.
         """
         shape = x.shape
-        x = rearrange()(x, "b (c r) t f -> (b c) f t r", r=2, c=shape[1] // 2)
+        x = rearrange(x, "b (c r) t f -> (b c) f t r", r=2, c=shape[1] // 2)
         x = torch.view_as_complex(x.contiguous())
         x = self.istft_fn(x, self.window_fft.to(x.device), self.n_fft, self.hop_fft, self.length_in_samples)
         return rearrange(x, "(b c) s -> b s c", b=shape[0], c=shape[1] // 2)
