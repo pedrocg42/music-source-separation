@@ -1,9 +1,8 @@
-import torch
-import numpy as np
-import matplotlib.pyplot as plt
-import sounddevice as sd
 import librosa
 import librosa.display
+import matplotlib.pyplot as plt
+import numpy as np
+import sounddevice as sd
 
 
 def visualize_and_play_audio(
