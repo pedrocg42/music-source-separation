@@ -56,14 +56,6 @@ class SourceSeparationTrainer(pl.LightningModule):
         pairs, track_name, sample_rate = batch
 
         for mix, target, target_name in pairs:
-            # Validation taking too long, only taking the middle N segments
-            # num_segments = 10
-            # start_idx = max(mix.shape[0] // 2 - (num_segments // 2) * self.segment_overlap, 0)
-            # length = (num_segments + 1) * self.segment_overlap
-
-            # mix = mix[start_idx : start_idx + length]
-            # target = target[start_idx : start_idx + length]
-
             segments = rearrange(
                 mix.unfold(dimension=0, size=self.segment_length, step=self.segment_overlap),
                 "s c d -> s d c",

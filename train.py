@@ -21,7 +21,7 @@ def train():
 
     # Example of how to initialize the data loader
     loader = SourceSeparationStemDataloader(
-        dataset, buffer_size=2048, batch_size=64, num_steps_per_epoch=1000, target="vocals"
+        dataset, buffer_size=512, batch_size=64, num_steps_per_epoch=1000, target="vocals"
     )
 
     val_dataset = MusDBDataset(
@@ -37,11 +37,10 @@ def train():
         sample_rate=44100,
     )
 
-    logger = TensorBoardLogger("logs", name="base-stems_conv_cosine")
     trainer = Trainer(
         accelerator="gpu",
         max_epochs=100,
-        logger=logger,
+        logger=TensorBoardLogger("logs", name="base-stems-512_conv_cosine"),
         callbacks=[
             ModelCheckpoint(verbose=True, save_top_k=3, auto_insert_metric_name=True, monitor="val_loss"),
             EarlyStopping(

@@ -72,21 +72,26 @@ class SourceSeparationStemDataloader:
             new_segments = {source: segment for segment, source in new_segments}
 
             mix = None
+            target = None
             for source in self.buffer:
-                idx = random.randint(0, len(self.buffer) - 1)
-                if mix is None:
-                    mix = self.buffer[source][idx]
-                elif random.uniform(0, 1) > 0.1:
-                    mix += self.buffer[source][idx] * random.uniform(0.7, 1.4)
+                idx = random.randint(0, len(self.buffer[source]) - 1)
 
-                if source == self.target:
-                    target = self.buffer[source][idx]
+                if random.uniform(0, 1) > 0.1:
+                    # Augment the mix +- 3dB
+                    stem = self.buffer[source][idx] * random.uniform(0.7, 1.4)
+                    if source == self.target:
+                        target = stem
+
+                    if mix is None:
+                        mix = stem
+                    else:
+                        mix += stem
 
                 if source in new_segments:
                     self.buffer[source][idx] = new_segments[source]
 
-            batch_x.append(mix)
-            batch_y.append(target)
+            batch_x.append(mix if mix is not None else torch.zeros_like(self.buffer[source][0]))
+            batch_y.append(target if target is not None else torch.zeros_like(self.buffer[source][0]))
             batch_label.append(self.target)
 
         return torch.stack(batch_x), torch.stack(batch_y), batch_label
