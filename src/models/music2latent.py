@@ -1,10 +1,11 @@
 import os
-from loguru import logger
+
 import torch
 import torch.nn as nn
-from music2latent.models import UNet
-from music2latent.audio import wv2realimag, realimag2wv
 from huggingface_hub import hf_hub_download
+from loguru import logger
+from music2latent.audio import realimag2wv, wv2realimag
+from music2latent.models import UNet
 
 
 def download_model():
