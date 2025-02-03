@@ -189,6 +189,7 @@ notebooks/.ipynb_checkpoints/*
 
 # Avoid to upload results
 *results*
+logs/*
 
 # Avoiding to upload the datasets
 datasets/*

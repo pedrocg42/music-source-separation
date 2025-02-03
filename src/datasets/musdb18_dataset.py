@@ -1,17 +1,16 @@
-from asyncio import as_completed
 from collections.abc import Iterator
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import musdb
 import torch
 from einops import rearrange
-from moisesdb.dataset import MoisesDB
-from moisesdb.track import MoisesDBTrack
 from torch.utils.data import IterableDataset
 
-from src import MOISESDB_PATH, MUSDB_PATH
+from src import MUSDB_PATH
 
 
-class MoisesDBDataset(IterableDataset):
+# Implementation from https://geoffroypeeters.github.io/deeplearning-101-audiomir_book/task_sourceseparation.html
+class MusDBDataset(IterableDataset):
     """
     A dataset for MusDB tracks with segment processing and multiprocessing
     loading.
@@ -53,12 +52,17 @@ class MoisesDBDataset(IterableDataset):
         self.segment_dur = segment_dur
         self.segment_overlap = segment_overlap
         self.num_workers = num_workers
-        self.db = MoisesDB(data_path=MOISESDB_PATH, sample_rate=44100)
+        self.mus = musdb.DB(
+            root=musdb_path,
+            subsets="train" if self.split in ["train", "valid"] else self.split,
+            split=self.split,
+            is_wav=True,
+        )
 
-        if not self.db.trackcxvs:
+        if not self.mus.tracks:
             raise ValueError(f"The dataset for split '{self.split}' is empty or not loaded properly.")
 
-    def _process_track(self, track: MoisesDBTrack) -> list[tuple[torch.Tensor, torch.Tensor, str]]:
+    def _process_track(self, track: musdb.MultiTrack) -> list[tuple[torch.Tensor, torch.Tensor, str]]:
         """
         Process a track by unfolding and rearranging its audio data.
 
@@ -72,15 +76,35 @@ class MoisesDBDataset(IterableDataset):
         step = int(track.rate * self.segment_overlap)
         name = track.name
         rate = track.rate
-        x = torch.tensor(track.audio).to(torch.float32)
-        x = rearrange(x.unfold(dimension=0, size=size, step=step), "s c d -> s d c")
+        mix = torch.as_tensor(track.audio, dtype=torch.float32)
+        mix = rearrange(mix.unfold(dimension=0, size=size, step=step), "s c d -> s d c")
         segments = []
         for target in self.targets:
-            y = torch.tensor(track.targets[target].audio).to(torch.float32)
+            y = torch.as_tensor(track.targets[target].audio, dtype=torch.float32)
             y = rearrange(y.unfold(dimension=0, size=size, step=step), "s c d -> s d c")
-            segments.extend(list(zip(x, y, [target] * x.shape[0], strict=True)))
-        del (x, y, track)
+            segments.extend(list(zip(mix, y, [target] * mix.shape[0], strict=True)))
+        del (mix, y, track)
         return (segments, name, rate)
+
+    def _process_test_track(self, track: musdb.MultiTrack) -> list[tuple[torch.Tensor, torch.Tensor, str]]:
+        """
+        Process a track by unfolding and rearranging its audio data.
+
+        Parameters:
+        track (musdb.Track): A musdb track object.
+
+        Returns:
+        list[tuple[torch.Tensor, torch.Tensor, str]]: Processed input and target audio segments.
+        """
+        name = track.name
+        rate = track.rate
+        mix = torch.tensor(track.audio).to(torch.float32)
+        pairs = [None] * len(self.targets)
+        for i, target in enumerate(self.targets):
+            y = torch.tensor(track.targets[target].audio).to(torch.float32)
+            pairs[i] = (mix, y, target)
+        del (mix, y, track)
+        return (pairs, name, rate)
 
     def __iter__(self) -> Iterator[tuple[torch.Tensor, torch.Tensor, str]]:
         """
@@ -93,7 +117,7 @@ class MoisesDBDataset(IterableDataset):
         if self.split == "train":
             # Continuous processing for training data
             while True:
-                with ThreadPoolExecutor()(max_workers=self.num_workers) as executor:
+                with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
                     tracks = [self.mus.tracks[i] for i in torch.randperm(len(self.mus.tracks)).tolist()][
                         : self.num_workers
                     ]
@@ -101,10 +125,10 @@ class MoisesDBDataset(IterableDataset):
                     for future in as_completed(futures):
                         segments = future.result()[0]
                         yield from segments
-        elif self.split == "test":
+        elif self.split in ["valid", "test"]:
             # One-time processing for test data
             with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
-                futures = [executor.submit(self._process_track, track) for track in self.mus.tracks]
+                futures = [executor.submit(self._process_test_track, track) for track in self.mus.tracks]
                 for future in as_completed(futures):
                     yield future.result()
         else:

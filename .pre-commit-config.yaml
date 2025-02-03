@@ -15,7 +15,7 @@ repos:
     hooks:
       - id: ruff
         name: ruff
-        entry: ruff check --fix hijos
+        entry: ruff check --fix src
         language: system
         types: [python]
         require_serial: true
@@ -23,7 +23,7 @@ repos:
 
       - id: ruff-format
         name: ruff-format
-        entry: ruff format hijos
+        entry: ruff format src 
         language: system
         types: [python]
         require_serial: true
