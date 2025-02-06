@@ -49,6 +49,7 @@ def get_activation(name: str) -> nn.Module:
         "prelu": torch.nn.PReLU(),
         "tanh": nn.Tanh(),
         "identity": nn.Identity(),
+        "glu": nn.GLU(dim=1),
     }
     if name in activation_map:
         return activation_map[name]
@@ -70,9 +71,10 @@ class ConvBlock(nn.Module):
         self,
         in_channels: int,
         out_channels: int,
-        kernel_size: tuple[int, int] | int = 3,
+        kernel_size: tuple[int, int] | int = 8,
         dropout: bool = False,
-        activation: str = "relu",
+        activation: str = "gelu",
+        dropout_rate: float = 0.25,
         **kargs: dict,
     ) -> None:
         """
@@ -92,9 +94,9 @@ class ConvBlock(nn.Module):
         self.ops = nn.ModuleList()
 
         self.ops.append(nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, **kargs))
-        self.ops.append(nn.BatchNorm2d(out_channels))
+        self.ops.append(nn.GroupNorm(num_groups=1, num_channels=out_channels))
         if dropout:
-            self.ops.append(nn.Dropout(p=0.25))
+            self.ops.append(nn.Dropout(p=dropout_rate))
         self.ops.append(get_activation(activation))
 
     def get_out_shape(self, shape: tuple[int, int]) -> list[int]:

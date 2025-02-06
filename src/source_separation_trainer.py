@@ -55,7 +55,7 @@ class SourceSeparationTrainer(pl.LightningModule):
     def validation_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
         pairs, track_name, sample_rate = batch
 
-        for mix, target, target_name in pairs:
+        for mix, target, _target_name in pairs:
             segments = rearrange(
                 mix.unfold(dimension=0, size=self.segment_length, step=self.segment_overlap),
                 "s c d -> s d c",
@@ -64,21 +64,21 @@ class SourceSeparationTrainer(pl.LightningModule):
             pred_segments = self.model(segments)
             pred_target = reconstruct_from_segments(pred_segments)
 
-            self.logger.experiment.add_audio(
-                f"validation/epoch{self.current_epoch}/{track_name}-mix",
-                mix.cpu().numpy().sum(axis=1),
-                self.current_epoch,
-            )
-            self.logger.experiment.add_audio(
-                f"validation/epoch{self.current_epoch}/{track_name}-{target_name}",
-                target.cpu().numpy().sum(axis=1),
-                self.current_epoch,
-            )
-            self.logger.experiment.add_audio(
-                f"validation/epoch{self.current_epoch}/{track_name}-{target_name}_pred",
-                pred_target.cpu().numpy().sum(axis=1),
-                self.current_epoch,
-            )
+            # self.logger.experiment.add_audio(
+            #     f"validation/epoch{self.current_epoch}/{track_name}-mix",
+            #     mix.cpu().numpy().sum(axis=1),
+            #     self.current_epoch,
+            # )
+            # self.logger.experiment.add_audio(
+            #     f"validation/epoch{self.current_epoch}/{track_name}-{target_name}",
+            #     target.cpu().numpy().sum(axis=1),
+            #     self.current_epoch,
+            # )
+            # self.logger.experiment.add_audio(
+            #     f"validation/epoch{self.current_epoch}/{track_name}-{target_name}_pred",
+            #     pred_target.cpu().numpy().sum(axis=1),
+            #     self.current_epoch,
+            # )
 
             target = target[: len(pred_target)]
             loss = self.loss_fn(pred_target, target).mean()
@@ -99,4 +99,4 @@ class SourceSeparationTrainer(pl.LightningModule):
             self.log("SAR", np.nanmedian(metrics["sar"]), on_step=False, on_epoch=True, logger=True, batch_size=1)
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
-        return torch.optim.RAdam(self.parameters(), lr=1e-4, weight_decay=1e-5)
+        return torch.optim.RAdam(self.parameters(), lr=3e-4)

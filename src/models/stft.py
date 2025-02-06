@@ -8,7 +8,7 @@ from einops import rearrange
 def get_audio_prepro_args(
     dur: float,
     window: str = "hanning",
-    n_fft: int = 2048,
+    n_fft: int = 4096,
     sr: int = 44100,
     hop_factor: float = 0.5,
     stereo: bool = True,
