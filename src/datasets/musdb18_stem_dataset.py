@@ -1,9 +1,11 @@
 from collections.abc import Iterator
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures.process import BrokenProcessPool
 
 import musdb
 import torch
 from einops import rearrange
+from loguru import logger
 from torch.utils.data import IterableDataset
 
 from src import MUSDB_PATH
@@ -83,8 +85,32 @@ class MusDBStemDataset(IterableDataset):
         sources = [None] * len(self.valid_targets)
         for i, source in enumerate(self.valid_targets):
             y = torch.as_tensor(track.sources[source].audio, dtype=torch.float32)
-            y = rearrange(y.unfold(dimension=0, size=size, step=step), "s c d -> s d c")
-            sources[i] = zip(y, [source] * len(y), strict=True)
+            # Unfold into segments
+            segments = y.unfold(dimension=0, size=size, step=step)
+            segments = rearrange(segments, "s c d -> s d c")
+
+            # Vectorized dB calculation
+            # Calculate RMS across time dimension (dim=1) and channels (dim=2)
+            rms = torch.sqrt(torch.mean(segments**2, dim=(1, 2)))
+            db_levels = 20 * torch.log10(rms + 1e-10)
+
+            # Create mask for segments above threshold
+            valid_mask = db_levels > -50
+
+            # Apply mask to keep valid segments
+            valid_segments = segments[valid_mask]
+
+            # Handle empty case
+            if len(valid_segments) == 0:
+                valid_segments = torch.zeros((0, size, segments.shape[-1]), dtype=torch.float32)
+
+            sources[i] = zip(
+                valid_segments,
+                [source] * len(valid_segments),
+                [rate] * len(valid_segments),
+                strict=True,
+            )
+
         sources = list(zip(*sources, strict=False))
         del (y, track)
         return (sources, name, rate)
@@ -120,19 +146,25 @@ class MusDBStemDataset(IterableDataset):
         if self.split == "train":
             # Continuous processing for training data
             while True:
-                with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
-                    tracks = [self.mus.tracks[i] for i in torch.randperm(len(self.mus.tracks)).tolist()][
-                        : self.num_workers
-                    ]
-                    futures = [executor.submit(self._process_track, track) for track in tracks]
-                    for future in as_completed(futures):
-                        yield from future.result()[0]
+                with ProcessPoolExecutor(max_workers=self.num_workers) as executor:
+                    try:
+                        tracks = [self.mus.tracks[i] for i in torch.randperm(len(self.mus.tracks)).tolist()][
+                            : self.num_workers
+                        ]
+                        futures = [executor.submit(self._process_track, track) for track in tracks]
+                        for future in as_completed(futures):
+                            yield from future.result()[0]
+                    except BrokenProcessPool as err:
+                        logger.warning(err)
         elif self.split in ["valid", "test"]:
-            # One-time processing for test data
-            with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
-                futures = [executor.submit(self._process_test_track, track) for track in self.mus.tracks]
-                for future in as_completed(futures):
-                    yield future.result()
+            try:
+                # One-time processing for test data
+                with ProcessPoolExecutor(max_workers=self.num_workers) as executor:
+                    futures = [executor.submit(self._process_test_track, track) for track in self.mus.tracks]
+                    for future in as_completed(futures):
+                        yield future.result()[0]
+            except BrokenProcessPool as err:
+                logger.warning(err)
         else:
             raise ValueError(f"Unknown split: {self.split}")
 

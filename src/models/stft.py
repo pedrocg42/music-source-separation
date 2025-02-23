@@ -118,6 +118,7 @@ class STFTModule(nn.Module):
         """
         return [4 if self.stereo else 2, int(self.n_frames), int(self.n_bins)]
 
+    # @torch.autocast(device_type=str(DEVICE), enabled=False)
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Forward pass for the module.
@@ -207,6 +208,7 @@ class iSTFTModule(nn.Module):
         """
         return self.length_in_samples, 2 if self.stereo else 1
 
+    # @torch.autocast(device_type=str(DEVICE), enabled=False)
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Forward pass for the module.

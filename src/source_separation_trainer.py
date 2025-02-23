@@ -28,6 +28,7 @@ class SourceSeparationTrainer(pl.LightningModule):
         loss_fn: nn.Module,
         segment_length: int = 4,  # 4 seconds
         segment_overlap: int = 2,
+        val_batch_size: int = 8,
         sample_rate: int = 44100,
     ):
         super().__init__()
@@ -36,6 +37,7 @@ class SourceSeparationTrainer(pl.LightningModule):
         self.loss_fn = loss_fn
         self.segment_length = int(segment_length * sample_rate)
         self.segment_overlap = int(segment_overlap * sample_rate)
+        self.val_batch_size = val_batch_size
         self.sample_rate = sample_rate
 
     def training_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
@@ -52,6 +54,7 @@ class SourceSeparationTrainer(pl.LightningModule):
 
         return loss
 
+    @torch.no_grad()
     def validation_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
         pairs, track_name, sample_rate = batch
 
@@ -61,8 +64,11 @@ class SourceSeparationTrainer(pl.LightningModule):
                 "s c d -> s d c",
             )
 
-            pred_segments = self.model(segments)
-            pred_target = reconstruct_from_segments(pred_segments)
+            pred_segments = []
+            for i in range(0, len(segments), self.val_batch_size):
+                pred_segments.append(self.model(segments[i : i + self.val_batch_size]))
+
+            pred_target = reconstruct_from_segments(torch.cat(pred_segments, dim=0))
 
             # self.logger.experiment.add_audio(
             #     f"validation/epoch{self.current_epoch}/{track_name}-mix",
@@ -99,4 +105,14 @@ class SourceSeparationTrainer(pl.LightningModule):
             self.log("SAR", np.nanmedian(metrics["sar"]), on_step=False, on_epoch=True, logger=True, batch_size=1)
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
-        return torch.optim.RAdam(self.parameters(), lr=3e-4)
+        optimizer = torch.optim.Adam(self.parameters(), lr=3e-4)
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": torch.optim.lr_scheduler.ReduceLROnPlateau(
+                    optimizer, mode="max", factor=0.3, patience=5, verbose=True
+                ),
+                "monitor": "SDR",
+                "frequency": 1,
+            },
+        }

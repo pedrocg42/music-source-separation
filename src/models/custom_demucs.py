@@ -200,7 +200,7 @@ class CustomDemucs(nn.Module):
         duration: float,
         n_layers: int = 4,
         n_filters: int = 48,
-        num_att_layers: int = 4,
+        num_att_layers: int = 5,
         mask_act: str = "tanh",
         behavior: str = "masking",
     ) -> None:

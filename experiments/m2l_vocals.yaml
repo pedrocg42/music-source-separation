@@ -1,0 +1,45 @@
+experiment_name: m2l_vocals
+
+dataset:
+  name: MusDBStemDataset
+  kwargs:
+    split: train
+    targets:
+      - vocals
+    segment_dur: 4.527891156462585 #
+    segment_overlap: 2.2639455782312925
+    num_workers: 8
+
+loader:
+  buffer_size: 2000
+  batch_size: 4
+  num_steps_per_epoch: 8000
+  target: vocals
+
+val_dataset:
+  name: MusDBStemDataset
+  kwargs:
+    split: valid
+    targets:
+      - vocals
+    segment_dur: 4.527891156462585 #
+    segment_overlap: 2.2639455782312925
+    num_workers: 8
+
+model:
+  name: CustomMusic2Latent
+
+source_separation_trainer:
+  loss: l1
+  segment_length: 4.527891156462585
+  segment_overlap: 2.2639455782312925
+  sample_rate: 44100
+
+trainer:
+  accelerator: gpu
+  max_epochs: 100
+  monitor: SDR
+  monitor_mode: max
+  patience: 10
+  precision: 16-mixed
+  accumulate_grad_batches: 8

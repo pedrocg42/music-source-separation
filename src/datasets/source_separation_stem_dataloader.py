@@ -2,6 +2,7 @@ import random
 from collections import defaultdict
 
 import torch
+from audiomentations import Compose, Gain, PitchShift
 
 
 class SourceSeparationStemDataloader:
@@ -46,12 +47,19 @@ class SourceSeparationStemDataloader:
         self.buffer = defaultdict(list)
         self.dataset_iter = iter(dataset)
 
+        self.augmentations = Compose(
+            [
+                Gain(min_gain_db=-3, max_gain_db=3, p=1.0),
+                PitchShift(min_semitones=-4.0, max_semitones=4.0, p=0.3),
+            ]
+        )
+
         for i in range(buffer_size):
             if (i + 1) % (buffer_size // 10) == 0:
                 print(f"Buffer {int(((i + 1) / buffer_size) * 100)}% filled.")
             sources = next(self.dataset_iter)
-            for source_segment, source in sources:
-                self.buffer[source].append(source_segment)
+            for source_segment, source, rate in sources:
+                self.buffer[source].append((source_segment, rate))
 
     def get_next(self) -> tuple[torch.Tensor, torch.Tensor, list[str]]:
         """
@@ -69,7 +77,7 @@ class SourceSeparationStemDataloader:
                 break  # If buffer is empty, stop forming the batch
 
             new_segments = next(self.dataset_iter)
-            new_segments = {source: segment for segment, source in new_segments}
+            new_segments = {source: (segment, rate) for segment, source, rate in new_segments}
 
             mix = None
             target = None
@@ -78,7 +86,10 @@ class SourceSeparationStemDataloader:
 
                 if random.uniform(0, 1) > 0.1:
                     # Augment the mix +- 3dB
-                    stem = self.buffer[source][idx] * random.uniform(0.7, 1.4)
+                    stem, _rate = self.buffer[source][idx]
+
+                    stem *= random.uniform(0.7, 1.4)
+
                     if source == self.target:
                         target = stem
 
@@ -90,8 +101,8 @@ class SourceSeparationStemDataloader:
                 if source in new_segments:
                     self.buffer[source][idx] = new_segments[source]
 
-            batch_x.append(mix if mix is not None else torch.zeros_like(self.buffer[source][0]))
-            batch_y.append(target if target is not None else torch.zeros_like(self.buffer[source][0]))
+            batch_x.append(mix if mix is not None else torch.zeros_like(self.buffer[source][0][0]))
+            batch_y.append(target if target is not None else torch.zeros_like(self.buffer[source][0][0]))
             batch_label.append(self.target)
 
         return torch.stack(batch_x), torch.stack(batch_y), batch_label
